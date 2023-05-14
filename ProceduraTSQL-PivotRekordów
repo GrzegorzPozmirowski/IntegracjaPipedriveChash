@@ -1,0 +1,108 @@
+ALTER PROCEDURE [dbo].[prWindykacjaFaktury_v3] @Tabela NVARCHAR(50)
+AS
+
+--DECLARE @Tabela NVARCHAR(50) = 'dbo.CC_windykacja_wysylka_test'
+DECLARE @TabelaDocelowa NVARCHAR(200) = CONCAT(@Tabela,'_faktury');
+DECLARE @Sql_przygotowanie NVARCHAR(600);
+DECLARE @Sql_truncate NVARCHAR(600);
+DECLARE @Sql_zapis NVARCHAR(600);
+DECLARE @Sql_utwórz_tabele NVARCHAR(MAX);
+DECLARE @Sql_insert NVARCHAR(600);
+
+--SELECT * FROM #TAB_1 
+DROP TABLE IF EXISTS #TAB_1, #TAB_multi, #Tab_single
+
+CREATE TABLE #TAB_1
+(Klient VARCHAR(100),
+Adres VARCHAR(500),
+saldo nvarchar(15),
+FV VARCHAR(MAX),
+Ile INT
+);
+
+CREATE TABLE #Tab_single
+(Klient VARCHAR(100),
+Adres VARCHAR(500),
+saldo nvarchar(15),
+FV VARCHAR(MAX),
+);
+
+CREATE TABLE #TAB_multi
+(ID INT IDENTITY, 
+Klient VARCHAR(100),
+Adres VARCHAR(500),
+saldo nvarchar(15),
+FV VARCHAR(MAX),
+Ile INT
+);
+
+SET @Sql_przygotowanie =
+N'WITH A AS(
+SELECT KlientNazwa AS Klient, adres AS Adres, cast(sum(saldo) as nvarchar)+''PLN'' as saldo,STRING_AGG(CONCAT(''Kwota faktury: '',saldo, '' '',currency,'', Numer faktury: '', number,'', Data płatności: '',payment_to),''|'') AS FV 
+FROM ' + @Tabela +
+' where charindex(''-'',status_wysylki)=0
+GROUP BY KlientNazwa, adres
+)
+INSERT INTO #TAB_1  (Klient, Adres, saldo,FV, Ile)
+SELECT Klient, Adres,saldo, FV, LEN(FV)-LEN(REPLACE(FV,''|'',''''))+1 AS Ile 
+FROM A
+ORDER BY Klient'
+
+EXEC sp_executesql @stmt = @Sql_przygotowanie, @Param = N'@Tabela NVARCHAR(50)', @Tabela = @Tabela;
+
+INSERT INTO #Tab_single (Klient, Adres,saldo, FV)
+SELECT Klient, Adres,saldo, FV FROM #TAB_1 WHERE Ile = 1
+
+INSERT INTO #TAB_multi(Klient, Adres,saldo, Ile, FV)
+SELECT Klient, Adres,saldo, Ile, FV +'|' FROM #TAB_1 WHERE Ile != 1
+
+SET @Sql_truncate = 'DROP TABLE IF EXISTS ' + @TabelaDocelowa;
+EXEC sp_executesql @stmt = @Sql_truncate, @Params = N'@TabelaDocelowa NVARCHAR(200)', @TabelaDocelowa = @TabelaDocelowa;
+
+SET @Sql_utwórz_tabele = 
+'CREATE TABLE ' + @TabelaDocelowa + '(
+[ID] [smallint] IDENTITY(1,1) NOT NULL,[Klient] [varchar](100) NULL,[Adres] [varchar](500) NULL,[saldo] [nvarchar](15) NULL,
+[FV1] [varchar](200) NULL,[FV2] [varchar](200) NULL,[FV3] [varchar](200) NULL,[FV4] [varchar](200) NULL,[FV5] [varchar](200) NULL,[FV6] [varchar](200) NULL,[FV7] [varchar](200) NULL,[FV8] [varchar](200) NULL,[FV9] [varchar](200) NULL,
+[FV10] [varchar](200) NULL,[FV11] [varchar](200) NULL,[FV12] [varchar](200) NULL,[FV13] [varchar](200) NULL,[FV14] [varchar](200) NULL,[FV15] [varchar](200) NULL,[FV16] [varchar](200) NULL,[FV17] [varchar](200) NULL,
+[FV18] [varchar](200) NULL,[FV19] [varchar](200) NULL,[FV20] [varchar](200) NULL,[FV21] [varchar](200) NULL,[FV22] [varchar](200) NULL,[FV23] [varchar](200) NULL,[FV24] [varchar](200) NULL,[FV25] [varchar](200) NULL)'
+
+--PRINT @Sql_utwórz_tabele
+EXEC sp_executesql @stmt = @Sql_utwórz_tabele, @Params =  N'@TabelaDocelowa AS NVARCHAR(200)', @TabelaDocelowa = @TabelaDocelowa;
+
+
+SET @Sql_insert = ' INSERT INTO ' + @TabelaDocelowa + ' (Klient, Adres, saldo) SELECT Klient, Adres,saldo FROM #TAB_multi ORDER BY ID;'
+EXEC sp_executesql @stmt = @Sql_insert, @Param = N'@TabelaDocelowa NVARCHAR(200)', @TabelaDocelowa = @TabelaDocelowa;
+
+DECLARE @max_id TINYINT;
+DECLARE @start_id VARCHAR(10) = 1;
+SELECT @max_id = MAX(ID) FROM #TAB_multi;
+
+WHILE @start_id <= @max_id
+BEGIN
+
+	DECLARE @Max_i TINYINT; 
+	SELECT @Max_i = Ile FROM #TAB_multi WHERE ID = @start_id;
+	DECLARE @i VARCHAR(10) = 1;
+
+	WHILE @i <= @Max_i
+	BEGIN
+		DECLARE @Wsad VARCHAR(200);
+		DECLARE @Wsad_clean VARCHAR(200);
+		SET @Wsad = (SELECT SUBSTRING(FV,1,CHARINDEX('|', FV)) FROM #TAB_multi WHERE ID = @start_id);
+			UPDATE #TAB_multi
+			SET FV = REPLACE(FV, @Wsad, '')
+			WHERE ID = @start_id
+
+			DECLARE @Polecenie NVARCHAR(MAX);
+			SET @Wsad_clean = SUBSTRING(@Wsad,1,LEN(@Wsad)-1);
+			SET @Polecenie = 'UPDATE ' + @TabelaDocelowa + ' SET FV' + @i + ' = '+ '''' + @Wsad_clean + '''' + ' WHERE ID = ' + @start_id;
+			EXEC sp_executesql @stmt = @Polecenie, @Params = N'@i AS VARCHAR(10), @Wsad_clean AS VARCHAR(200), @start_id AS VARCHAR(10), @TabelaDocelowa AS NVARCHAR(200)', @i = @i, @Wsad_clean = @Wsad_clean, @start_id = @start_id, @TabelaDocelowa = @TabelaDocelowa;
+		SET @i += 1;
+	END
+
+	SET @start_id += 1;
+END
+
+SET @Sql_zapis = 'INSERT INTO ' + @TabelaDocelowa +  ' (Klient, Adres,saldo, FV1) SELECT Klient, Adres,saldo, FV FROM #Tab_single';
+
+EXEC sp_executesql @stmt = @Sql_zapis, @Params = N'@TabelaDocelowa NVARCHAR(200)', @TabelaDocelowa = @TabelaDocelowa;

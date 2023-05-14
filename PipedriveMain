@@ -1,0 +1,179 @@
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.SqlClient;
+using System.IO;
+using System.Linq;
+using System.Net;
+
+namespace CALL_API_PL_Pipedrive
+{
+    internal class Program
+    {
+        static void Main(string[] args)
+        {
+            //Deklaracja zmiennych
+            string integracja = "Deals";
+            string tabela_pipedrive = "deals";
+            string rynek = "PL";
+            string spolka = "sdasalespl";
+            string sql_login = "login_serwer";
+            string sql_haslo = "login_haslo";
+            string sql_schemat = "pipe_pl";
+            string sql_tabela = "Deals_tmp";
+            string api_token = "api_token";
+            string sql_lacze = $"Data Source=serwer;Initial Catalog=baza_danych;Persist Security Info=True;User ID={sql_login};Password={sql_haslo}";
+
+            ////////// BLOK API //////////
+
+            SqlConnection PolaczenieSQLServer = new SqlConnection(sql_lacze);
+            PolaczenieSQLServer.Open();
+
+            //TimeMark Start
+            SqlCommand StartTime = new SqlCommand($"INSERT INTO MonitoringIntegracji ([Country], [Integration], [Start]) VALUES ('{rynek}', '{integracja}',getdate())", PolaczenieSQLServer);
+            StartTime.ExecuteNonQuery();
+
+            SqlCommand MaxID = PolaczenieSQLServer.CreateCommand();
+            MaxID.CommandText = "SELECT MAX(ID) FROM MonitoringIntegracji";
+            int id = (Int32)MaxID.ExecuteScalar();
+
+            //Połączenie z API i wczytanie danych do tabeli
+            Console.WriteLine("Integracja danych Pipedrive.");
+            Console.WriteLine($"Obszar integracji: {integracja}");
+            Console.WriteLine($"Rynek: {rynek}");
+            Console.WriteLine($"- - - - - - - - - - - - - -");
+            Console.WriteLine($"1. Rozpoczęcie inegracji.");
+            Console.WriteLine("2. Łączenie API Pipedrive, wczytanie i deserializacja JSON.");
+
+
+            //Definiowanie punktu starotwego
+            StartPointDataContext PunktStartowy = new StartPointDataContext();
+            var start_point = (PunktStartowy.svDeals.Select(x => x.UpdateTime)).Max();
+
+            //przesuń o 3h wstecz
+            DateTime przesuniecie3h = new DateTime();
+            przesuniecie3h = (DateTime)start_point;
+            var godzina_start = przesuniecie3h.AddHours(-3);
+
+            //Kontener dla zdeserializowanych JSONów
+            List<PipedriveDealsTable4> Kontener_JSON = new List<PipedriveDealsTable4>();
+
+            int limit = 500;
+            int strona = 0;
+            int iterator = 500;
+            bool semafor = true;
+
+            do
+            {
+                WebClient klient = new WebClient();
+                Stream ciąg = klient.OpenRead($"https://{spolka}.pipedrive.com/api/v1/{tabela_pipedrive}?&limit={limit}&start={strona}&api_token={api_token}&sort=update_time+DESC");
+                StreamReader czytaj = new StreamReader(ciąg);
+                JObject objekt = JObject.Parse(czytaj.ReadToEnd());
+
+                var tablica = objekt["data"].Value<JArray>();
+                IList kolekcja = (IList)tablica;
+
+                int powtórzenia = objekt["data"].Value<JArray>().Count;
+
+                //Console.WriteLine(tablica);
+                //Console.ReadKey();
+
+                //identyfikacja pierwszej update_time z paginy
+                IEnumerable<JToken> godzina = objekt.SelectTokens($"data[*].update_time");
+                var godz_start_pagina = (godzina.Select(g => g)).Max();
+                DateTime godzina_pagina = (DateTime)godz_start_pagina;
+
+                if (kolekcja != null && (godzina_pagina >= godzina_start || strona == 0))
+                {
+                    List<PipedriveDealsTable4> Deserlializacja = JsonConvert.DeserializeObject<List<PipedriveDealsTable4>>(kolekcja.ToString());
+                    Deserlializacja.OrderByDescending(K => K.id);
+
+                    for (int i = 0; i < powtórzenia; i++)
+                    {
+                        JToken Person_id = objekt.SelectToken($"$.data[{i}]['person_id']['value']");
+                        if (Person_id == null)
+                        {
+                            Person_id = 0;
+                        }
+                        Deserlializacja[i].person_id = Convert.ToInt32(Person_id);
+                    }
+                    Kontener_JSON.AddRange(Deserlializacja);
+                }
+                else
+                {
+                    semafor = false;
+                }
+
+                if (powtórzenia < iterator)
+                {
+                    semafor = false;
+                }
+
+                strona += iterator;
+            }
+            while (semafor);
+
+            Console.WriteLine("      Deserializacja ukończona");
+
+
+            ////////// BLOK SQL //////////
+
+            //Zweryfikuj czy dana tabela istnieje na serwerze. Jeśli nie - kreuj
+            Console.WriteLine("3. Weryfikacja czy istnieje tabela na serverze.");
+            SqlCommand ZweryfikujCzyIstniejeTabela = new SqlCommand($@"SELECT T.name FROM sys.tables AS T
+                                                                       WHERE T.name = '{sql_tabela}'
+                                                                       AND T.schema_id IN
+                                                                           (SELECT S.schema_id FROM sys.schemas AS S
+                                                                           WHERE S.name = '{sql_schemat}')",
+                                                                       PolaczenieSQLServer);
+
+            object weryfikacja_tabeli = ZweryfikujCzyIstniejeTabela.ExecuteScalar();
+
+            if (weryfikacja_tabeli == DBNull.Value || weryfikacja_tabeli == null)
+            {
+                SqlCommand polecenie = new SqlCommand(Biblioteka.MetodyKonwertujace.GenerujTabelęSQL(Kontener_JSON, sql_schemat, sql_tabela), PolaczenieSQLServer);
+                polecenie.CommandTimeout = 0;
+                polecenie.ExecuteNonQuery();
+                Console.WriteLine("      Utworzono nową tabelę.");
+            }
+            else
+            {
+                SqlCommand ZapytanieSQL = new SqlCommand($"TRUNCATE TABLE {sql_schemat}.{sql_tabela}", PolaczenieSQLServer);
+                ZapytanieSQL.CommandTimeout = 0;
+                ZapytanieSQL.ExecuteNonQuery();
+                Console.WriteLine("4. Czyszczenie tabeli.");
+            }
+
+            //Zapis danych na serwerze
+            DataTable ZdeserializowanyJSON = Biblioteka.MetodyKonwertujace.KreujTabele(Kontener_JSON);
+            SqlBulkCopy ZapiszDaneNaServer = new SqlBulkCopy(PolaczenieSQLServer);
+            ZapiszDaneNaServer.BulkCopyTimeout = 0;
+            ZapiszDaneNaServer.DestinationTableName = sql_schemat + '.' + sql_tabela;
+            Console.WriteLine("5. Zapis danych na serwerze.");
+            ZapiszDaneNaServer.WriteToServer(ZdeserializowanyJSON);
+            ZapiszDaneNaServer.Close();
+
+            Console.WriteLine("6. Aktualizacja danych na serwerze.");
+
+            SqlCommand UpdateData = PolaczenieSQLServer.CreateCommand();
+            UpdateData.CommandText = "prPipeMergeDeals";
+            UpdateData.CommandType = CommandType.StoredProcedure;
+            UpdateData.Parameters.AddWithValue("@schema", $"{sql_schemat}");
+            UpdateData.CommandTimeout = 0;
+            UpdateData.ExecuteNonQuery();
+
+            Console.WriteLine("7. Zakończenie integracji.");
+            Console.WriteLine();
+
+            //TimeMark Stop
+            SqlCommand StopTime = new SqlCommand($"UPDATE dbo.MonitoringIntegracji SET [End] = getdate() WHERE [Country] = '{rynek}' AND [Integration] = '{integracja}' AND [id] = {id}", PolaczenieSQLServer);
+            StopTime.ExecuteNonQuery();
+
+            PolaczenieSQLServer.Close();
+            Console.WriteLine("  Designed by SDA.");
+        }
+    }
+}

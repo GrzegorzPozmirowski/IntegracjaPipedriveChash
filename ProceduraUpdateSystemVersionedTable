@@ -1,0 +1,129 @@
+
+/*------------------------------------------------------------------------------------------------------------------------------------------*\
+Autor:				Grzegorz
+Data utworzenia:	2022-09-27
+Wersja:				1.4
+Rola:				Aktualizowanie tabel svDeals schematów pipe-__ o zaktualizowane dane z widoku vDeals.
+
+Opis:				Procedura pobiera trzy parametr: Nazwa schematu do operowania.
+
+
+					Z tabeli docelowej pobierany jest zakres kolumn z i bez pierwszej kolumny z kluczem id. Na ich podstawie tworzony jest
+					zakres znaków będący częścią treści właściwego zapytania, które aktualizuje tabele docelową poprzez konstrukcję MERGE.
+					Konstrukcja ta wykonuje dwie operacje:
+					- w przypadku braku id z tabeli źródłowej w tabeli docelowej: INSERT.
+					- w przypadku zgodnści kluczy, UPDATE tabeli docelowej o wartości z tabeli źródłowej (o ile różnice zostaną zidentyfikowane).
+
+					Po zdefiniowaniu treści właściwego zapytania (@Sql), wykonanie aktualizacji dokonuje się poprzez procedurę systemową:
+					sp_executesql ze zdefiniowanymi paramertami.
+
+Obekty powiązane:   obiekty schematów: pipe_al, pipe_ro, pipe_pl, pipe_cz, pipe_ee_fi, pipe_lt_lv.
+
+Rejestr zmian:
+1. Data: 2022-09-29. Zakres zmian: Ograniczenie weryfikacji zmian do kolumny: updated_time. Poprzednia wersja: 1.0
+2. Data: 2022-10-06. Zakres zmian: Dodanie części dla warunku IF @schema = pipe_pl. Poprzednia wersja: 1.1
+3. Data: 2023-03-10 Zakres zmian: Modyfikacja zakresu kolumn na pipe_pl. Poprzednia wersja: 1.2
+4. Data: 2023-03-22 Zakres zmian: Modyfikacja zakresu kolumn na pipe_pl. Poprzednia wersja: 1.3
+\*------------------------------------------------------------------------------------------------------------------------------------------*/
+
+ALTER PROCEDURE [dbo].[prPipeMergeDeals](@schema AS NVARCHAR(20))
+AS
+BEGIN
+
+	DECLARE @RunID INT = (SELECT ISNULL(MAX(RunID),0)+1 FROM dbo.MonitoringProcedur)
+	INSERT INTO dbo.MonitoringProcedur (RunID, [User], prName, [Start]) VALUES (@RunID, USER, 'prPipeMergeDeals '+ @schema, getdate())
+
+BEGIN TRY
+--SET NOCOUNT OFF
+
+--Deklarowanie zmiennych
+DECLARE @TableA AS TABLE (C1 NVARCHAR(200), C2 NVARCHAR(200));
+DECLARE @TableB AS TABLE (C1 NVARCHAR(200), C2 NVARCHAR(200));
+
+DECLARE @not_equal AS NVARCHAR(MAX);
+DECLARE @equal AS NVARCHAR(MAX);
+DECLARE @alias AS NVARCHAR(MAX);
+DECLARE @column_list AS NVARCHAR(MAX);
+DECLARE @column_list_alias AS NVARCHAR(MAX);
+DECLARE @Sql AS NVARCHAR(MAX);
+
+DECLARE @Target_table AS NVARCHAR(MAX) = @schema+'.'+'svDeals';
+DECLARE @Source_table AS NVARCHAR(MAX) = @schema+'.'+'vDeals';
+
+
+
+		--Definiowanie zakresu kolumn z obiektu
+		INSERT INTO @TableA (C1, C2)
+		SELECT name AS C1, name AS C2 FROM sys.columns AS C
+		WHERE name NOT IN ('ValidFrom', 'ValidTo')
+		AND C.object_id IN
+			(SELECT T.object_id 
+			FROM sys.tables AS T
+			WHERE T.name = 'svDeals'
+			AND T.schema_id IN
+				(SELECT S.schema_id
+				FROM sys.schemas AS S
+				WHERE name = @schema));
+
+		--Definiowanie zakresu kolumn do weryfikcji i aktualizacji
+		INSERT INTO @TableB (C1, C2)
+		SELECT name AS C1, name AS C2 FROM sys.columns AS C
+		WHERE name NOT IN ('id','ValidFrom', 'ValidTo')
+		AND C.object_id IN
+			(SELECT T.object_id 
+			FROM sys.tables AS T
+			WHERE T.name = 'svDeals'
+			AND T.schema_id IN
+				(SELECT S.schema_id
+				FROM sys.schemas AS S
+				WHERE name = @schema));
+
+		-- Definiowanie zmiennych do właściwego zapytania
+		SET @column_list = (SELECT STRING_AGG(C1,',') FROM @TableA);
+		SET @column_list_alias = (SELECT STRING_AGG('Src.' + C1,',') FROM @TableA);
+		SET @alias = (SELECT STRING_AGG(CONCAT(C1,'=','Src.', C2),',') FROM @TableB);
+
+		--Właściwe zapytanie - definiowanie.
+		SET @Sql = N'MERGE ' + @Target_table + N' AS Tgt
+		USING (SELECT ' + @column_list + N' FROM ' + @Source_table + N') AS Src
+		(' + @column_list + ')
+		ON Src.id = Tgt.id
+		WHEN NOT MATCHED BY TARGET THEN INSERT (' + @column_list + N') VALUES (' + @column_list_alias + N')
+		WHEN MATCHED AND Tgt.UpdateTime != Src.UpdateTime THEN UPDATE SET ' + @alias + N';'
+  
+		--Właściwe zapytanie - wykonanie.
+		EXEC sp_executesql @Sql, @stmt = 
+		N'@Target_table AS NVARCHAR(MAX), 
+		@column_list AS NVARCHAR(MAX), 
+		@Source_table AS NVARCHAR(MAX), 
+		@column_list_alias AS NVARCHAR(MAX),
+		@alias AS NVARCHAR(MAX)',
+		@Target_table = @Target_table, 
+		@column_list = @column_list,
+		@Source_table = @Source_table, 
+		@column_list_alias = @column_list_alias,
+		@alias = @alias;
+
+	END
+  
+  UPDATE dbo.MonitoringProcedur
+    SET Stop = getdate(),
+	Result = 'Success'
+    WHERE RunID=@RunID
+
+END TRY
+
+BEGIN CATCH
+
+	INSERT INTO dbo.ErrorTable(erLocation, erType, er1, er2, TimeStamp)
+	VALUES('prPipeMergeDeals '+@schema,ERROR_MESSAGE(),ERROR_NUMBER(),ERROR_LINE(), getdate())
+
+	UPDATE dbo.MonitoringProcedur
+	SET [Stop] = getdate(),
+		Result = 'Fail',
+		errCode = error_number(),
+		errLine = error_line(),
+		errDesc = error_message()
+	WHERE RunID = @RunID
+
+	END CATCH

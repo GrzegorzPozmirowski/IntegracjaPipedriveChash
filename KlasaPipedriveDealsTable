@@ -1,0 +1,66 @@
+using Newtonsoft.Json;
+using System;
+
+namespace CALL_API_PL_Pipedrive
+{
+    public class PipedriveDealsTable4
+    {
+        public int id { get; set; }
+        public string stage_id { get; set; }
+        public string title { get; set; }
+        public string value { get; set; }
+        public string currency { get; set; }
+        public string add_time { get; set; }
+        public DateTime update_time { get; set; }
+        public string stage_change_time { get; set; }
+        public string active { get; set; }
+        public string deleted { get; set; }
+        public string status { get; set; }
+        public string probability { get; set; }
+        public string next_activity_date { get; set; }
+        public string next_activity_time { get; set; }
+        public string next_activity_id { get; set; }
+        public string last_activity_id { get; set; }
+        public string last_activity_date { get; set; }
+        public string lost_reason { get; set; }
+        public string visible_to { get; set; }
+        public string close_time { get; set; }
+        public string pipeline_id { get; set; }
+        public string won_time { get; set; }
+        public string first_won_time { get; set; }
+        public string lost_time { get; set; }
+        public string products_count { get; set; }
+        public string files_count { get; set; }
+        public string notes_count { get; set; }
+        public string followers_count { get; set; }
+        public string email_messages_count { get; set; }
+        public string activities_count { get; set; }
+        public string done_activities_count { get; set; }
+        public string undone_activities_count { get; set; }
+        public string participants_count { get; set; }
+        public string expected_close_date { get; set; }
+        public string last_incoming_mail_time { get; set; }
+        public string last_outgoing_mail_time { get; set; }
+        public string label { get; set; }
+        public string renewal_type { get; set; }
+        public string stage_order_nr { get; set; }
+        public string person_name { get; set; }
+        public string org_name { get; set; }
+        public string next_activity_subject { get; set; }
+        public string next_activity_type { get; set; }
+        public string next_activity_duration { get; set; }
+        public string next_activity_note { get; set; }
+        public string formatted_value { get; set; }
+        public string weighted_value { get; set; }
+        public string formatted_weighted_value { get; set; }
+        public string weighted_value_currency { get; set; }
+        public string rotten_time { get; set; }
+        public string owner_name { get; set; }
+        public string cc_email { get; set; }
+        [JsonProperty("8d88cbdda25d45d8721129d701bc4faabc0b1550")]
+        public string _8d88cbdda25d45d8721129d701bc4faabc0b1550 { get; set; }
+        [JsonProperty("12551fcf7d8561140d0340a9cf1643b48ac1b667")]
+        public string _12551fcf7d8561140d0340a9cf1643b48ac1b667 { get; set; }
+        [JsonProperty("67a6a29c1449361391512efc47302c1234186a3e")]
+        ....
+        }

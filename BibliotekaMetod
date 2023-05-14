@@ -1,0 +1,69 @@
+using System.Collections.Generic;
+using System.Data;
+
+namespace Biblioteka
+{
+    public class MetodyKonwertujace
+    {
+        public static DataTable KreujTabele<T>(List<T> TabelaJSON)
+        {
+            DataTable tabela = new DataTable();
+            var typ = typeof(T);
+
+            for (int i = 0; i < TabelaJSON.Count; i++)
+            {
+                tabela.Rows.Add(tabela.NewRow());
+            }
+
+            foreach (var kol in typ.GetProperties())
+            {
+                DataColumn kolumna = new DataColumn(kol.Name, kol.PropertyType);
+                tabela.Columns.Add(kolumna);
+
+                int a = 0;
+                foreach (var dane in TabelaJSON)
+                {
+                    DataRow wsad = tabela.Rows[a++];
+                    wsad[kol.Name] = kol.GetValue(dane);
+                }
+            }
+            return tabela;
+        }
+
+        //Metoda generująca treść zapytania SQL Serwer do utworzenia tabeli na serwerze w oparciu o zdeserializowany JSON
+        public static string GenerujTabelęSQL<T>(List<T> Tabela, string schemat, string tabela)
+        {
+            var typ = typeof(T);
+
+            string sql_tworz_tabele;
+            sql_tworz_tabele = $"CREATE TABLE {schemat}.{tabela} (";
+
+            foreach (var a in typ.GetProperties())
+            {
+                sql_tworz_tabele = sql_tworz_tabele + $"{a.Name} {a.PropertyType}, ";
+            }
+
+            sql_tworz_tabele = sql_tworz_tabele + ")";
+            sql_tworz_tabele = sql_tworz_tabele.Replace(", )", ");");
+
+            sql_tworz_tabele = sql_tworz_tabele.Replace("System.Int64", "BIGINT");
+            sql_tworz_tabele = sql_tworz_tabele.Replace("System.Int32", "INT");
+            sql_tworz_tabele = sql_tworz_tabele.Replace("System.Int16", "SMALLINT");
+            sql_tworz_tabele = sql_tworz_tabele.Replace("System.String", "VARCHAR(MAX)");
+            sql_tworz_tabele = sql_tworz_tabele.Replace("System.Byte", "NVARCHAR(1)");
+            sql_tworz_tabele = sql_tworz_tabele.Replace("System.Boolean", "BIT");
+            sql_tworz_tabele = sql_tworz_tabele.Replace("System.Decimal", "NUMERIC(10,2)");
+            sql_tworz_tabele = sql_tworz_tabele.Replace("System.Double", "NUMERIC(10,2)");
+            sql_tworz_tabele = sql_tworz_tabele.Replace("System.DateTime", "DATETIME");
+            sql_tworz_tabele = sql_tworz_tabele.Replace("System.Char", "NVARCHAR(1)");
+            sql_tworz_tabele = sql_tworz_tabele.Replace("System.Object", "VARCHAR(512)");
+            sql_tworz_tabele = sql_tworz_tabele.Replace("System.Nullable`1", "");
+
+            sql_tworz_tabele = sql_tworz_tabele.Replace("Key", "[Key]");
+            sql_tworz_tabele = sql_tworz_tabele.Replace("key", "[key]");
+
+
+            return sql_tworz_tabele;
+        }
+    }
+}

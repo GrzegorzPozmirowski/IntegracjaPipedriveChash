@@ -1,0 +1,160 @@
+ALTER PROCEDURE [dbo].[prPipeTime]
+AS
+
+DECLARE @RunID INT = (SELECT ISNULL(MAX(RunID),0)+1 FROM dbo.MonitoringProcedur)
+INSERT INTO dbo.MonitoringProcedur (RunID, [User], prName, [Start]) VALUES (@RunID, USER, 'prPipeTime', getdate())
+
+BEGIN TRY
+
+	------- BLOK PIPEDRIVE -------
+
+	DROP TABLE IF EXISTS #tab, #result
+	CREATE TABLE #tab (ID INT IDENTITY, [Table] VARCHAR(30), Entity VARCHAR(5))
+
+	INSERT INTO #tab 
+	SELECT 
+		CONCAT(Y.name,'.', T.name) AS [Table], 
+		UPPER(RIGHT(Y.name,2)) AS Entity
+	FROM sys.tables AS T 
+	JOIN sys.schemas AS Y
+	ON T.schema_id = Y.schema_id
+	WHERE T.schema_id IN
+		(SELECT S.schema_id FROM sys.schemas AS S WHERE S.Name LIKE 'pipe%')
+	AND T.temporal_type_desc != 'HISTORY_TABLE'
+	AND T.name NOT LIKE '%_tmp'
+	AND T.name NOT IN ('StageMoves','pbiLejek');
+	--ORDER BY Y.name;
+
+	--SELECT * FROM #tab
+	CREATE TABLE #result (ID INT, Entity VARCHAR(5), [Object] VARCHAR(30), [Table] VARCHAR(30), MaxUpdateTime SMALLDATETIME);
+	DECLARE @Limit AS TINYINT = (SELECT COUNT(*) FROM #tab);
+	DECLARE @i AS TINYINT = 1;
+	DECLARE @MaxTime AS SMALLDATETIME;
+	DECLARE @Sql AS NVARCHAR(MAX);
+	DECLARE @Entity AS VARCHAR(30);
+	DECLARE @Obj AS VARCHAR(30);
+	DECLARE @Tab AS VARCHAR(30);
+	DECLARE @a AS TINYINT;
+	DECLARE @Param AS NVARCHAR(50);
+
+	WHILE @i <= @Limit
+	BEGIN
+		SET @Entity = (SELECT Entity FROM #tab WHERE ID = @i);
+		SET @Obj = (SELECT SUBSTRING([Table], 9, LEN([Table])) FROM #tab WHERE ID = @i);
+		SET @Tab = (SELECT [Table] FROM #tab WHERE ID = @i);
+		SET @a = (SELECT ID FROM #tab WHERE ID = @i);
+
+		IF @Obj IN ('Deals_deleted','svActivities','svNotes')
+		BEGIN
+			INSERT INTO #result(ID, Entity, [Object], [Table])
+			VALUES(@a, @Entity, @Obj, @Tab)
+
+			SET @Sql = 'UPDATE #result SET MaxUpdateTime = (SELECT MAX(update_time) FROM ' + (SELECT [Table] FROM #tab WHERE ID = @a) +') WHERE ID = @a';
+			SET @Param = N'@a tinyint'; 
+			EXEC sp_executesql @Sql, N'@a INT', @a = @a;
+		END
+
+		IF @Obj IN ('Deals_ID','DealsFields','Persons_ID','PersonsFields','Pipelines','Stages','Products')
+		BEGIN
+			INSERT INTO #result(ID, Entity, [Object], [Table])
+			VALUES(@a, @Entity, @Obj, @Tab)
+
+			SET @Sql = 'UPDATE #result SET MaxUpdateTime = (SELECT MAX(TimeLoad) FROM ' + (SELECT [Table] FROM #tab WHERE ID = @a) +') WHERE ID = @a';
+			SET @Param = N'@a tinyint'; 
+			EXEC sp_executesql @Sql, N'@a INT', @a = @a;
+		END
+
+		IF @Obj IN ('svDeals','svPersons')
+		BEGIN
+			INSERT INTO #result(ID, Entity, [Object], [Table])
+			VALUES(@a, @Entity, @Obj, @Tab)
+
+			SET @Sql = 'UPDATE #result SET MaxUpdateTime = (SELECT MAX(UpdateTime) FROM ' + (SELECT [Table] FROM #tab WHERE ID = @a) +') WHERE ID = @a';
+			SET @Param = N'@a tinyint'; 
+			EXEC sp_executesql @Sql, N'@a INT', @a = @a;
+		END
+
+		SET @i += 1;
+	END
+
+	--SELECT * FROM #result
+
+	------- BLOK SOV -------
+
+	DROP TABLE IF EXISTS #tab2, #result2
+	CREATE TABLE #tab2 (ID INT IDENTITY, [Table] VARCHAR(30), Entity VARCHAR(5))
+
+	INSERT INTO #tab2
+	SELECT 
+		CONCAT(Y.name,'.', T.name) AS [Table], 
+		RIGHT(UPPER(T.name),2) AS Entity
+	FROM sys.tables AS T 
+	JOIN sys.schemas AS Y
+	ON T.schema_id = Y.schema_id
+	WHERE T.schema_id IN
+		(SELECT S.schema_id FROM sys.schemas AS S WHERE S.Name = 'sov')
+	AND T.temporal_type_desc NOT IN ('HISTORY_TABLE','SYSTEM_VERSIONED_TEMPORAL_TABLE')
+	AND T.name NOT IN ('srcCoursePlanning','srcB2Bpmt','srcB2Bsales')
+
+	--SELECT * FROM #tab2
+	CREATE TABLE #result2 (ID INT, Entity VARCHAR(5), [Object] VARCHAR(30), [Table] VARCHAR(30), MaxUpdateTime SMALLDATETIME);
+	DECLARE @Limit2 AS TINYINT = (SELECT COUNT(*) FROM #tab2);
+	DECLARE @i2 AS TINYINT = 1;
+	DECLARE @MaxTime2 AS SMALLDATETIME;
+	DECLARE @Sql2 AS NVARCHAR(MAX);
+	DECLARE @Entity2 AS VARCHAR(30);
+	DECLARE @Obj2 AS VARCHAR(30);
+	DECLARE @Tab2 AS VARCHAR(30);
+	DECLARE @a2 AS TINYINT;
+	DECLARE @Param2 AS NVARCHAR(50);
+
+	WHILE @i2 <= @Limit2
+	BEGIN
+		SET @Entity2 = (SELECT Entity FROM #tab2 WHERE ID = @i2);
+		SET @Obj2 = 'srcSOV - Entities:';--(SELECT SUBSTRING([Table], CHARINDEX('.',[Table])+1, LEN([Table])) FROM #tab2 WHERE ID = @i2);
+		SET @Tab2 = (SELECT [Table] FROM #tab2 WHERE ID = @i2);
+		SET @a2 = (SELECT ID FROM #tab2 WHERE ID = @i2);
+
+		BEGIN
+			INSERT INTO #result2(ID, Entity, [Object], [Table])
+			VALUES(@a2, @Entity2, @Obj2, @Tab2)
+
+			SET @Sql2 = 'UPDATE #result2 SET MaxUpdateTime = (SELECT MAX(TimeLoad) FROM ' + (SELECT [Table] FROM #tab2 WHERE ID = @a2) +') WHERE ID = @a2';
+			SET @Param2 = N'@a2 tinyint'; 
+			EXEC sp_executesql @Sql2, N'@a2 INT', @a2 = @a2;
+		END
+		SET @i2 += 1;
+	END
+
+	--SELECT * FROM #result2
+
+	------- AGREGACJA -------
+
+	TRUNCATE TABLE dbo.PipeTime 
+
+	INSERT INTO dbo.PipeTime (ID, Entity, [Object],[Table], MaxUpdateTime)
+	SELECT ID, Entity, [Object],[Table], MaxUpdateTime FROM #result;
+
+	INSERT INTO dbo.PipeTime (ID, Entity, [Object],[Table], MaxUpdateTime)
+	SELECT ID, Entity, [Object],[Table], MaxUpdateTime FROM #result2;
+
+	BEGIN
+		UPDATE dbo.MonitoringProcedur
+		SET Stop = fx.getdate(),
+			Result = 'Success'
+		WHERE RunID=@RunID
+	END
+
+END TRY
+
+BEGIN CATCH
+
+	UPDATE dbo.MonitoringProcedur
+	SET [Stop] = getdate(),
+		Result = 'Fail',
+		errCode = error_number(),
+		errLine = error_line(),
+		errDesc = error_message()
+	WHERE RunID = @RunID
+
+END CATCH;

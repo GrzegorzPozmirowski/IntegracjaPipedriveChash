@@ -34,7 +34,7 @@ namespace Registrations
             string integracja = "CM_Registrations";
             int id;
 
-            SqlConnection PolaczenieSQL = new SqlConnection("Data Source=91.232.4.56;Initial Catalog=rdm;Persist Security Info=True;User ID=Controlling;Password=pass1+2");
+            SqlConnection PolaczenieSQL = new SqlConnection("Data Source=<serwer>;Initial Catalog=<baza_danych>;Persist Security Info=True;User ID=<uzytkownik>;Password=<haslo>");
             PolaczenieSQL.Open();
 
             //TimeMark Start

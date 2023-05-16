@@ -1,0 +1,71 @@
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using System;
+using System.Collections.Generic;
+using System.Data.SqlClient;
+using System.IO;
+using System.Net;
+using System.Text;
+
+namespace Registrations
+{
+    public static class GetMethods
+    {
+        public static List<NewestRoomsTable> GetLastRoomId(string market, string server_connection)
+        {
+            SqlConnection PolaczenieSQL = new SqlConnection(server_connection);
+            PolaczenieSQL.Open();
+
+            List<NewestRoomsTable> Tabela = new List<NewestRoomsTable>();
+
+            SqlCommand ZapytanieRoomId = new SqlCommand($"SELECT[Account], [Id] FROM [rdm].[cm].[srcConferencesTmp] WHERE Status = 'inactive' AND Account = '{market}' AND fx.DateFromText(Starts_at) >= DATEADD(DAY, -14, GETDATE())", PolaczenieSQL);
+            ZapytanieRoomId.CommandTimeout = 0;
+            SqlDataReader DaneSerwer = ZapytanieRoomId.ExecuteReader();
+
+            while (DaneSerwer.Read())
+            {
+                NewestRoomsTable Rekord = new NewestRoomsTable();
+
+                Rekord.Market = Convert.ToString(DaneSerwer["Account"]);
+                Rekord.RoomID = Convert.ToInt32(DaneSerwer["Id"]);
+
+                Tabela.Add(Rekord);
+            }
+            DaneSerwer.Close();
+            PolaczenieSQL.Close();
+
+            return Tabela;
+        }
+
+        public static List<RegistrationsPartlyTable> GetRegistrations(string url, int room_id, string klucz_api)
+        {
+            List<RegistrationsPartlyTable> SesjeRynek = new List<RegistrationsPartlyTable>();
+            List<RegistrationsPartlyTable>  Sesja = new List<RegistrationsPartlyTable>();
+
+            WebClient Klient = new WebClient();
+
+                string klucz = Convert.ToBase64String(Encoding.ASCII.GetBytes(klucz_api));
+                Klient.Headers[HttpRequestHeader.Authorization] = string.Format("Basic {0}", klucz);
+                Klient.Headers.Add("Accept: application/json");
+                Klient.Headers.Add("X-Api-Key", klucz_api);
+
+                Stream ciąg = Klient.OpenRead(url + $"{room_id}/registrations/all");
+                StreamReader czytaj = new StreamReader(ciąg);
+
+                JArray TablicaJSON = JArray.Parse(czytaj.ReadToEnd());
+
+                Sesja = JsonConvert.DeserializeObject<List<RegistrationsPartlyTable>>(TablicaJSON.ToString());
+
+                int ile = Sesja.Count;
+
+                for (int i = 0; i < ile; i++)
+                {
+                    Sesja[i].RoomID = room_id;
+                }
+                SesjeRynek.AddRange(Sesja);
+
+                return SesjeRynek;
+           
+        }
+    }
+}

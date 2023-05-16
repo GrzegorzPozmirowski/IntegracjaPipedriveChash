@@ -1,0 +1,147 @@
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.SqlClient;
+using System.Linq;
+
+namespace Registrations
+{
+    internal class Program
+    {
+        public static string url = "https://api.clickmeeting.com/v1/conferences/";
+        public static string klucze_serwer = "Data Source=<serwer>;Initial Catalog=<baza_danych>;Persist Security Info=True;User ID=<uzytkownik>;Password=<haslo>";
+
+        static void Main(string[] args)
+        {
+            Dictionary<int, KeysAPITable> API_Dostep = new Dictionary<int, KeysAPITable>()
+            {
+                { 0, new KeysAPITable("RO", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") },
+                { 1, new KeysAPITable("CS", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") },
+                { 2, new KeysAPITable("EE", "cccccccccccccccccccccccccccccccccccccccccc") },
+                { 3, new KeysAPITable("AL", "dddddddddddddddddddddddddddddddddddddddddd") },
+                { 4, new KeysAPITable("PL", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee") }
+            };
+
+            Console.WriteLine("Integracja: ClickMeeting");
+            Console.WriteLine("Zakres: Registrations.");
+            Console.WriteLine("Typ integracji: Wymiana wszystkih danych.");
+            Console.WriteLine("- - - - - - - - - - - - - - - - - - - -");
+            Console.WriteLine("1. Rozpoczęcie integracji.");
+
+            int limit_api_dostep = API_Dostep.Count();
+            string sql_schemat = "cm";
+            string sql_tabela = "srcRegistrationsTmp";
+            string integracja = "CM_Registrations";
+            int id;
+
+            SqlConnection PolaczenieSQL = new SqlConnection("Data Source=91.232.4.56;Initial Catalog=rdm;Persist Security Info=True;User ID=Controlling;Password=pass1+2");
+            PolaczenieSQL.Open();
+
+            //TimeMark Start
+            SqlCommand StartTime = new SqlCommand($"INSERT INTO dbo.MonitoringCM ([Integration],[Start]) VALUES ('{integracja}',getdate())", PolaczenieSQL);
+            StartTime.ExecuteNonQuery();
+
+            //TimeStamp monitoring
+            SqlCommand MaxID = new SqlCommand("SELECT MAX(ID) FROM dbo.MonitoringCM WHERE [End] IS NULL", PolaczenieSQL);
+            id = (Int32)MaxID.ExecuteScalar();
+
+            Console.WriteLine("2. Pobieranie ostatnich RoomID.");
+
+            List<NewestRoomsTable> TabelaRoomID = new List<NewestRoomsTable>();
+
+            for (int i = 0; i < limit_api_dostep; i++)
+            {
+                string rynek = API_Dostep[i].Rynek;
+                TabelaRoomID.AddRange(GetMethods.GetLastRoomId(rynek, klucze_serwer));
+            }
+
+            Console.WriteLine("3. Przypisywanie ApiKey");
+
+            IEnumerable<RoomIdApiKeyTable> TableRoomIdApiKeyTemp =
+                                                                from x in TabelaRoomID
+                                                                join y in API_Dostep
+                                                                on x.Market equals y.Value.Rynek
+                                                                select new RoomIdApiKeyTable { RoomId = x.RoomID, Klucz = y.Value.Klucz, Account = y.Value.Rynek };
+
+            List<RoomIdApiKeyTable> TableRoomIdApiKey = TableRoomIdApiKeyTemp.ToList();
+
+            int limit_tabela_room_api = TableRoomIdApiKey.Count();
+
+            Console.WriteLine("4. Pobieranie zapisów rejestracji.");
+            List<RegistrationsPartlyTable> TabelaRegistrations = new List<RegistrationsPartlyTable>();
+            for (int i = 0; i < limit_tabela_room_api; i++)
+            {
+                int room_id = TableRoomIdApiKey[i].RoomId;
+                string klucz_api = TableRoomIdApiKey[i].Klucz;
+                string rynek = TableRoomIdApiKey[i].Account;
+                TabelaRegistrations.AddRange(GetMethods.GetRegistrations(url, room_id, klucz_api));
+            }
+
+            ConferencesSqlDataContext Conferences = new ConferencesSqlDataContext();
+
+            Console.WriteLine("5. Konstruowanie tabeli docelowej.");
+            IEnumerable<RegistrationsTable> TableRegistrationsFinalTmp =
+                                                                from x in TabelaRegistrations
+                                                                join y in Conferences.srcConferencesTmp
+                                                                on x.RoomID equals y.Id
+                                                                select new RegistrationsTable 
+                                                                                                {Account = y.Account,
+                                                                                                Room_type = y.Room_type,
+                                                                                                Name = y.Name,
+                                                                                                Status = y.Status,
+                                                                                                RoomID = x.RoomID,
+                                                                                                Id = x.Id,
+                                                                                                Visitor_nickname = x.Visitor_nickname,
+                                                                                                Email = x.Email,
+                                                                                                Registration_date = x.Registration_date,
+                                                                                                Registration_confirmed = x.Registration_confirmed,
+                                                                                                Session_id = x.Session_id,
+                                                                                                TimeLoad = (DateTime)y.TimeLoad};
+
+            List<RegistrationsTable> TableRegistrationsFinal = TableRegistrationsFinalTmp.ToList();
+
+            Console.WriteLine("6. Weryfikacja czy istnieje tabela na serwerze.");
+
+            List<RegistrationsTable> Wzornik = new List<RegistrationsTable>();
+            SqlCommand ZweryfikujCzyIstniejeTabela = new SqlCommand($@"SELECT T.name FROM sys.tables AS T
+                                                                       WHERE T.name = '{sql_tabela}'
+                                                                       AND T.schema_id IN
+                                                                           (SELECT S.schema_id FROM sys.schemas AS S
+                                                                           WHERE S.name = '{sql_schemat}')",PolaczenieSQL);
+
+            object weryfikacja_tabeli = ZweryfikujCzyIstniejeTabela.ExecuteScalar();
+
+            if (weryfikacja_tabeli == DBNull.Value || weryfikacja_tabeli == null)
+            {
+                SqlCommand polecenie = new SqlCommand(Biblioteka.Metody.GenerujTabelęSQL(Wzornik, sql_schemat, sql_tabela), PolaczenieSQL);
+                polecenie.CommandTimeout = 0;
+                polecenie.ExecuteNonQuery();
+                Console.WriteLine("      Utworzono nową tabelę.");
+            }
+            else
+            {
+                SqlCommand ZapytanieSQL = new SqlCommand($"TRUNCATE TABLE {sql_schemat}.{sql_tabela}", PolaczenieSQL);
+                ZapytanieSQL.CommandTimeout = 0;
+                ZapytanieSQL.ExecuteNonQuery();
+                Console.WriteLine("      Czyszczenie tabeli.");
+            }
+
+            Console.WriteLine("7. Zapis danych na serwerze SQL.");
+
+            DataTable ZdeserializowanyJSON = Biblioteka.Metody.UtwórzTabele(TableRegistrationsFinal);
+            SqlBulkCopy ZapisDanych = new SqlBulkCopy(PolaczenieSQL);
+            ZapisDanych.BulkCopyTimeout = 0;
+            ZapisDanych.DestinationTableName = sql_schemat + '.' + sql_tabela;
+            ZapisDanych.WriteToServer(ZdeserializowanyJSON);
+            ZapisDanych.Close();
+
+            //TimeStamp monitoring
+            SqlCommand StopTime = new SqlCommand($"UPDATE dbo.MonitoringCM SET [End] = getdate() WHERE [Integration] = '{integracja}' AND [ID] = {id}", PolaczenieSQL);
+            StopTime.ExecuteNonQuery();
+
+            PolaczenieSQL.Close();
+
+            Console.WriteLine("8. Zakończenie integracji.");
+        }
+    }
+}

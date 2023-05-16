@@ -1,4 +1,4 @@
-# Integracja ETL hash oraz procedury TSQL
+# Integracja ETL C hash oraz procedury TSQL
 Integracje Pipedrive oraz ClickMeeting
     1. Aplikacje konsolowe .NET Framework:
     Kod pobierające dane w formacie JSON z bramki API platformy ( w tym definiowanie head`ersów). Dane są następnie deserializowane z zastosowaniem biblioteki Newtonsoft i zapisywane na serwer MS SQL (ADO.NET).

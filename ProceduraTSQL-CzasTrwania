@@ -23,9 +23,7 @@ BEGIN TRY
 	AND T.temporal_type_desc != 'HISTORY_TABLE'
 	AND T.name NOT LIKE '%_tmp'
 	AND T.name NOT IN ('StageMoves','pbiLejek');
-	--ORDER BY Y.name;
 
-	--SELECT * FROM #tab
 	CREATE TABLE #result (ID INT, Entity VARCHAR(5), [Object] VARCHAR(30), [Table] VARCHAR(30), MaxUpdateTime SMALLDATETIME);
 	DECLARE @Limit AS TINYINT = (SELECT COUNT(*) FROM #tab);
 	DECLARE @i AS TINYINT = 1;
@@ -77,8 +75,6 @@ BEGIN TRY
 		SET @i += 1;
 	END
 
-	--SELECT * FROM #result
-
 	------- BLOK SOV -------
 
 	DROP TABLE IF EXISTS #tab2, #result2
@@ -96,7 +92,6 @@ BEGIN TRY
 	AND T.temporal_type_desc NOT IN ('HISTORY_TABLE','SYSTEM_VERSIONED_TEMPORAL_TABLE')
 	AND T.name NOT IN ('srcCoursePlanning','srcB2Bpmt','srcB2Bsales')
 
-	--SELECT * FROM #tab2
 	CREATE TABLE #result2 (ID INT, Entity VARCHAR(5), [Object] VARCHAR(30), [Table] VARCHAR(30), MaxUpdateTime SMALLDATETIME);
 	DECLARE @Limit2 AS TINYINT = (SELECT COUNT(*) FROM #tab2);
 	DECLARE @i2 AS TINYINT = 1;
@@ -125,8 +120,6 @@ BEGIN TRY
 		END
 		SET @i2 += 1;
 	END
-
-	--SELECT * FROM #result2
 
 	------- AGREGACJA -------
 

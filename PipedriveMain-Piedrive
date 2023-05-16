@@ -25,7 +25,7 @@ namespace CALL_API_PL_Pipedrive
             string sql_schemat = "pipe_pl";
             string sql_tabela = "Deals_tmp";
             string api_token = "api_token";
-            string sql_lacze = $"Data Source=serwer;Initial Catalog=baza_danych;Persist Security Info=True;User ID={sql_login};Password={sql_haslo}";
+            string sql_lacze = $"Data Source=<serwer>;Initial Catalog=<baza_danych>;Persist Security Info=True;User ID={sql_login};Password={sql_haslo}";
 
             ////////// BLOK API //////////
 

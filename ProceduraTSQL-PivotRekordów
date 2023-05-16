@@ -1,7 +1,6 @@
-ALTER PROCEDURE [dbo].[prWindykacjaFaktury_v3] @Tabela NVARCHAR(50)
+CREATE PROCEDURE [dbo].[prWindykacjaFaktury] @Tabela NVARCHAR(50)
 AS
 
---DECLARE @Tabela NVARCHAR(50) = 'dbo.CC_windykacja_wysylka_test'
 DECLARE @TabelaDocelowa NVARCHAR(200) = CONCAT(@Tabela,'_faktury');
 DECLARE @Sql_przygotowanie NVARCHAR(600);
 DECLARE @Sql_truncate NVARCHAR(600);
@@ -9,7 +8,6 @@ DECLARE @Sql_zapis NVARCHAR(600);
 DECLARE @Sql_utwórz_tabele NVARCHAR(MAX);
 DECLARE @Sql_insert NVARCHAR(600);
 
---SELECT * FROM #TAB_1 
 DROP TABLE IF EXISTS #TAB_1, #TAB_multi, #Tab_single
 
 CREATE TABLE #TAB_1

@@ -1,12 +1,11 @@
 
 /*------------------------------------------------------------------------------------------------------------------------------------------*\
 Autor:				Grzegorz
-Data utworzenia:	2022-09-27
+Data utworzenia:		2022-09-27
 Wersja:				1.4
 Rola:				Aktualizowanie tabel svDeals schematów pipe-__ o zaktualizowane dane z widoku vDeals.
 
 Opis:				Procedura pobiera trzy parametr: Nazwa schematu do operowania.
-
 
 					Z tabeli docelowej pobierany jest zakres kolumn z i bez pierwszej kolumny z kluczem id. Na ich podstawie tworzony jest
 					zakres znaków będący częścią treści właściwego zapytania, które aktualizuje tabele docelową poprzez konstrukcję MERGE.
@@ -34,7 +33,6 @@ BEGIN
 	INSERT INTO dbo.MonitoringProcedur (RunID, [User], prName, [Start]) VALUES (@RunID, USER, 'prPipeMergeDeals '+ @schema, getdate())
 
 BEGIN TRY
---SET NOCOUNT OFF
 
 --Deklarowanie zmiennych
 DECLARE @TableA AS TABLE (C1 NVARCHAR(200), C2 NVARCHAR(200));
@@ -49,8 +47,6 @@ DECLARE @Sql AS NVARCHAR(MAX);
 
 DECLARE @Target_table AS NVARCHAR(MAX) = @schema+'.'+'svDeals';
 DECLARE @Source_table AS NVARCHAR(MAX) = @schema+'.'+'vDeals';
-
-
 
 		--Definiowanie zakresu kolumn z obiektu
 		INSERT INTO @TableA (C1, C2)
@@ -83,7 +79,7 @@ DECLARE @Source_table AS NVARCHAR(MAX) = @schema+'.'+'vDeals';
 		SET @column_list_alias = (SELECT STRING_AGG('Src.' + C1,',') FROM @TableA);
 		SET @alias = (SELECT STRING_AGG(CONCAT(C1,'=','Src.', C2),',') FROM @TableB);
 
-		--Właściwe zapytanie - definiowanie.
+		--Właściwe zapytanie - konstrukcja.
 		SET @Sql = N'MERGE ' + @Target_table + N' AS Tgt
 		USING (SELECT ' + @column_list + N' FROM ' + @Source_table + N') AS Src
 		(' + @column_list + ')
@@ -126,4 +122,4 @@ BEGIN CATCH
 		errDesc = error_message()
 	WHERE RunID = @RunID
 
-	END CATCH
+END CATCH

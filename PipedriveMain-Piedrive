@@ -68,18 +68,15 @@ namespace CALL_API_PL_Pipedrive
 
             do
             {
-                WebClient klient = new WebClient();
-                Stream ciąg = klient.OpenRead($"https://{spolka}.pipedrive.com/api/v1/{tabela_pipedrive}?&limit={limit}&start={strona}&api_token={api_token}&sort=update_time+DESC");
-                StreamReader czytaj = new StreamReader(ciąg);
-                JObject objekt = JObject.Parse(czytaj.ReadToEnd());
+                WebClient Klient = new WebClient();
+                Stream Dane = Klient.OpenRead($"https://{spolka}.pipedrive.com/api/v1/{tabela_pipedrive}?&limit={limit}&start={strona}&api_token={api_token}&sort=update_time+DESC");
+                StreamReader CzytajDane = new StreamReader(Dane);
+                JObject Objekt = JObject.Parse(CzytajDane.ReadToEnd());
 
-                var tablica = objekt["data"].Value<JArray>();
-                IList kolekcja = (IList)tablica;
+                var Tablica = Objekt["data"].Value<JArray>();
+                IList Kolekcja = (IList)Tablica;
 
-                int powtórzenia = objekt["data"].Value<JArray>().Count;
-
-                //Console.WriteLine(tablica);
-                //Console.ReadKey();
+                int powtórzenia = Objekt["data"].Value<JArray>().Count;
 
                 //identyfikacja pierwszej update_time z paginy
                 IEnumerable<JToken> godzina = objekt.SelectTokens($"data[*].update_time");

@@ -102,7 +102,7 @@ namespace Registrations
 
             Console.WriteLine("6. Weryfikacja czy istnieje tabela na serwerze.");
 
-            List<RegistrationsTable> Wzornik = new List<RegistrationsTable>();
+            List<RegistrationsTable> Template = new List<RegistrationsTable>();
             SqlCommand ZweryfikujCzyIstniejeTabela = new SqlCommand($@"SELECT T.name FROM sys.tables AS T
                                                                        WHERE T.name = '{sql_tabela}'
                                                                        AND T.schema_id IN

@@ -8,8 +8,8 @@ namespace Registrations
 {
     internal class Program
     {
-        public static string url = "https://api.clickmeeting.com/v1/conferences/";
-        public static string klucze_serwer = "Data Source=<serwer>;Initial Catalog=<baza_danych>;Persist Security Info=True;User ID=<uzytkownik>;Password=<haslo>";
+        public static readonly string url = "https://api.clickmeeting.com/v1/conferences/";
+        public static readonly string klucze_serwer = "Data Source=<serwer>;Initial Catalog=<baza_danych>;Persist Security Info=True;User ID=<uzytkownik>;Password=<haslo>";
 
         static void Main(string[] args)
         {
